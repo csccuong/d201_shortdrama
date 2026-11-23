@@ -23,6 +23,8 @@ class MyListState {
   final Set<String> favoriteIds;
   final Set<String> watchLaterIds;
   final Set<String> likedIds;
+  final String? favoritesLang;
+  final String? historyLang;
 
   const MyListState({
     this.favorites = const [],
@@ -37,6 +39,8 @@ class MyListState {
     this.favoriteIds = const {},
     this.watchLaterIds = const {},
     this.likedIds = const {},
+    this.favoritesLang,
+    this.historyLang,
   });
 
   bool isFavorited(String dramaId) => favoriteIds.contains(dramaId);
@@ -56,6 +60,8 @@ class MyListState {
     Set<String>? favoriteIds,
     Set<String>? watchLaterIds,
     Set<String>? likedIds,
+    String? favoritesLang,
+    String? historyLang,
   }) {
     return MyListState(
       favorites: favorites ?? this.favorites,
@@ -70,6 +76,8 @@ class MyListState {
       favoriteIds: favoriteIds ?? this.favoriteIds,
       watchLaterIds: watchLaterIds ?? this.watchLaterIds,
       likedIds: likedIds ?? this.likedIds,
+      favoritesLang: favoritesLang ?? this.favoritesLang,
+      historyLang: historyLang ?? this.historyLang,
     );
   }
 }
@@ -77,6 +85,8 @@ class MyListState {
 class MyListNotifier extends Notifier<MyListState> {
   MyListApiService get _service => inject<MyListApiService>();
   DramaApiService get _dramaService => inject<DramaApiService>();
+  int _favoritesGen = 0;
+  int _historyGen = 0;
 
   @override
   MyListState build() => const MyListState();
@@ -113,13 +123,16 @@ class MyListNotifier extends Notifier<MyListState> {
   }
 
   Future<void> fetchFavorites({String? lang, bool refresh = true}) async {
+    final targetLang = lang ?? AppConstants.selectedLanguageCode;
+    final gen = ++_favoritesGen;
     state = state.copyWith(isLoadingFavorites: true);
     try {
       final res = await _service.fetchFavorites(
         page: 1,
         pageSize: 20,
-        lang: lang ?? AppConstants.selectedLanguageCode,
+        lang: targetLang,
       );
+      if (gen != _favoritesGen) return;
       final ids = {...res.items.map((e) => e.dramaId)};
       final wlIds = {
         ...state.watchLaterIds,
@@ -131,8 +144,10 @@ class MyListNotifier extends Notifier<MyListState> {
         isLoadingFavorites: false,
         favoriteIds: ids,
         watchLaterIds: wlIds,
+        favoritesLang: targetLang,
       );
     } catch (e) {
+      if (gen != _favoritesGen) return;
       debugPrint('MyListNotifier.fetchFavorites error: $e');
       state = state.copyWith(isLoadingFavorites: false);
     }
@@ -313,20 +328,25 @@ class MyListNotifier extends Notifier<MyListState> {
   }
 
   Future<void> fetchHistory({String? lang}) async {
+    final targetLang = lang ?? AppConstants.selectedLanguageCode;
+    final gen = ++_historyGen;
     state = state.copyWith(isLoadingHistory: true);
     try {
       final res = await _service.fetchHistory(
         page: 1,
         pageSize: 20,
-        lang: lang ?? AppConstants.selectedLanguageCode,
+        lang: targetLang,
       );
+      if (gen != _historyGen) return;
       state = state.copyWith(
         history: res.items,
         historyPagination: res.pagination,
         isLoadingHistory: false,
+        historyLang: targetLang,
       );
       syncCards(res.items);
     } catch (e) {
+      if (gen != _historyGen) return;
       debugPrint('MyListNotifier.fetchHistory error: $e');
       state = state.copyWith(isLoadingHistory: false);
     }

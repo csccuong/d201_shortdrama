@@ -17,12 +17,14 @@ class HomeState {
   final List<DramaCard> recommendedDramas;
   final Pagination? recommendedPagination;
   final bool isLoadingMore;
+  final String? loadedLang;
 
   const HomeState({
     this.homeData,
     this.recommendedDramas = const [],
     this.recommendedPagination,
     this.isLoadingMore = false,
+    this.loadedLang,
   });
 
   HomeState copyWith({
@@ -30,6 +32,7 @@ class HomeState {
     List<DramaCard>? recommendedDramas,
     Pagination? recommendedPagination,
     bool? isLoadingMore,
+    String? loadedLang,
   }) {
     return HomeState(
       homeData: homeData ?? this.homeData,
@@ -37,6 +40,7 @@ class HomeState {
       recommendedPagination:
           recommendedPagination ?? this.recommendedPagination,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      loadedLang: loadedLang ?? this.loadedLang,
     );
   }
 }
@@ -46,6 +50,8 @@ class HomeState {
 // ============================================================================
 
 class HomeNotifier extends AsyncNotifier<HomeState> {
+  int _fetchGeneration = 0;
+
   @override
   Future<HomeState> build() async {
     return const HomeState();
@@ -55,16 +61,20 @@ class HomeNotifier extends AsyncNotifier<HomeState> {
 
   /// Fetches the home screen data: banners, sections, and page-1 recommended.
   Future<void> fetchHome(String lang) async {
+    final gen = ++_fetchGeneration;
     state = const AsyncValue.loading();
     try {
       final homeResponse = await _service.fetchHome(lang: lang);
+      if (gen != _fetchGeneration) return;
 
       state = AsyncValue.data(HomeState(
         homeData: homeResponse,
         recommendedDramas: homeResponse.recommended,
         recommendedPagination: homeResponse.recommendedPagination,
+        loadedLang: lang,
       ));
     } catch (e, st) {
+      if (gen != _fetchGeneration) return;
       debugPrint('HomeNotifier.fetchHome error: $e');
       state = AsyncValue.error(e, st);
     }
@@ -77,6 +87,8 @@ class HomeNotifier extends AsyncNotifier<HomeState> {
     if (current.isLoadingMore) return;
     if (current.recommendedPagination?.hasMore != true) return;
 
+    final targetLang = lang ?? AppConstants.selectedLanguageCode;
+    final gen = _fetchGeneration;
     state = AsyncValue.data(current.copyWith(isLoadingMore: true));
 
     try {
@@ -84,8 +96,9 @@ class HomeNotifier extends AsyncNotifier<HomeState> {
       final result = await _service.fetchRecommended(
         page: nextPage,
         pageSize: current.recommendedPagination!.pageSize,
-        lang: lang ?? AppConstants.selectedLanguageCode,
+        lang: targetLang,
       );
+      if (gen != _fetchGeneration) return;
 
       // result is a named record with .items, .cohort, .pagination
       final newItems = result.items;
@@ -97,6 +110,7 @@ class HomeNotifier extends AsyncNotifier<HomeState> {
         isLoadingMore: false,
       ));
     } catch (e) {
+      if (gen != _fetchGeneration) return;
       debugPrint('HomeNotifier.loadMoreRecommended error: $e');
       state = AsyncValue.data(current.copyWith(isLoadingMore: false));
       // Don't replace whole state with error for pagination failures

@@ -16,22 +16,26 @@ class RewardsState {
   final RewardsOverview? overview;
   final bool isCheckingIn;
   final bool isClaimingTask;
+  final String? loadedLang;
 
   const RewardsState({
     this.overview,
     this.isCheckingIn = false,
     this.isClaimingTask = false,
+    this.loadedLang,
   });
 
   RewardsState copyWith({
     RewardsOverview? overview,
     bool? isCheckingIn,
     bool? isClaimingTask,
+    String? loadedLang,
   }) {
     return RewardsState(
       overview: overview ?? this.overview,
       isCheckingIn: isCheckingIn ?? this.isCheckingIn,
       isClaimingTask: isClaimingTask ?? this.isClaimingTask,
+      loadedLang: loadedLang ?? this.loadedLang,
     );
   }
 }
@@ -41,6 +45,8 @@ class RewardsState {
 // ============================================================================
 
 class RewardsNotifier extends AsyncNotifier<RewardsState> {
+  int _fetchGeneration = 0;
+
   @override
   Future<RewardsState> build() async {
     return const RewardsState();
@@ -50,12 +56,18 @@ class RewardsNotifier extends AsyncNotifier<RewardsState> {
 
   /// Fetches the rewards overview: wallet, check-in schedule, and tasks.
   Future<void> fetchOverview(String lang) async {
+    final gen = ++_fetchGeneration;
     state = const AsyncValue.loading();
     try {
       final overview = await _service.fetchOverview(lang: lang);
+      if (gen != _fetchGeneration) return;
       ref.read(walletProvider.notifier).updateFromWalletInfo(overview.wallet);
-      state = AsyncValue.data(RewardsState(overview: overview));
+      state = AsyncValue.data(RewardsState(
+        overview: overview,
+        loadedLang: lang,
+      ));
     } catch (e, st) {
+      if (gen != _fetchGeneration) return;
       debugPrint('RewardsNotifier.fetchOverview error: $e');
       state = AsyncValue.error(e, st);
     }

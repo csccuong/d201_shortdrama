@@ -73,6 +73,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
   bool _allHasMore = true;
   bool _isLoadingAll = false;
   String? _allError;
+  String? _allDramasLang;
 
   @override
   void initState() {
@@ -143,7 +144,8 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
     } else if (!oldWidget.isTabActive && widget.isTabActive) {
       _ensureFeedLoaded();
       unawaited(_refreshForYouIfExpired());
-      if (_topTab == 1 && _allDramas.isEmpty) {
+      final lang = ref.read(localeProvider).appLanguage;
+      if (_topTab == 1 && (_allDramas.isEmpty || _allDramasLang != lang)) {
         unawaited(_loadAllDramas(reset: true));
       }
     }
@@ -190,11 +192,12 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
   void _ensureFeedLoaded() {
     final sessionReady = ref.read(sessionProvider).isReady;
     final feed = ref.read(feedProvider);
-    if (sessionReady && feed.items.isEmpty && !feed.isLoadingMore) {
+    final lang = ref.read(localeProvider).appLanguage;
+    if (sessionReady &&
+        !feed.isLoadingMore &&
+        (feed.items.isEmpty || feed.loadedLang != lang)) {
       unawaited(
-        ref
-            .read(feedProvider.notifier)
-            .fetchInitialFeed(ref.read(localeProvider).appLanguage),
+        ref.read(feedProvider.notifier).fetchInitialFeed(lang),
       );
     }
   }
@@ -236,6 +239,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
     }
 
     try {
+      final lang = ref.read(localeProvider).appLanguage;
       final res = await ref.read(homeApiServiceProvider).browseDramas(
             page: nextPage,
             pageSize: 21,
@@ -245,13 +249,14 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
             category: _selectedCategory,
             tags: _selectedTag,
             sort: _sortBy,
-            lang: ref.read(localeProvider).appLanguage,
+            lang: lang,
           );
       if (!mounted) return;
       setState(() {
         _allDramas = reset ? res.items : [..._allDramas, ...res.items];
         _allPage = res.pagination.page;
         _allHasMore = res.pagination.hasMore;
+        _allDramasLang = lang;
         _isLoadingAll = false;
       });
     } catch (e) {

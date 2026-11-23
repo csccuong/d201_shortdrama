@@ -430,11 +430,11 @@ class LanguageController extends ChangeNotifier {
       if (ref.read(sessionProvider).asData?.value.isInitialized == true) {
         unawaited(
           Future(() async {
-            await ref.read(accountProvider.notifier).updateSettings(
-                  appLanguage: code,
-                  subtitleLanguage: code,
-                );
             await Future.wait([
+              ref.read(accountProvider.notifier).updateSettings(
+                    appLanguage: code,
+                    subtitleLanguage: code,
+                  ),
               ref.read(sessionProvider.notifier).refreshSession(),
               ref.read(homeProvider.notifier).fetchHome(code),
               ref.read(feedProvider.notifier).fetchInitialFeed(code),

@@ -27,6 +27,7 @@ class SessionState {
   final String? deviceId;
   final Dio? dio;
   final String? error;
+  final String? loadedLang;
 
   const SessionState({
     this.isInitialized = false,
@@ -36,6 +37,7 @@ class SessionState {
     this.deviceId,
     this.dio,
     this.error,
+    this.loadedLang,
   });
 
   SessionState copyWith({
@@ -47,6 +49,7 @@ class SessionState {
     Dio? dio,
     String? error,
     bool clearError = false,
+    String? loadedLang,
   }) {
     return SessionState(
       isInitialized: isInitialized ?? this.isInitialized,
@@ -56,6 +59,7 @@ class SessionState {
       deviceId: deviceId ?? this.deviceId,
       dio: dio ?? this.dio,
       error: clearError ? null : (error ?? this.error),
+      loadedLang: loadedLang ?? this.loadedLang,
     );
   }
 }
@@ -115,6 +119,7 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
   Future<SessionState> _runInitializeSession() async {
     state = const AsyncValue.loading();
     try {
+      final requestLang = AppConstants.selectedLanguageCode;
       final coordinator = inject<AppStartupCoordinator>();
       final initDataMap = await coordinator.initializeApp();
 
@@ -149,6 +154,7 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
         initData: initResponse,
         deviceId: deviceId,
         dio: coordinator.dio,
+        loadedLang: requestLang,
       );
 
       _stopConnectivityListener();
@@ -195,6 +201,7 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
     if (current?.coordinator == null) return;
 
     try {
+      final requestLang = AppConstants.selectedLanguageCode;
       final coordinator = current!.coordinator!;
       final initDataMap = await coordinator.initializeApp();
       final initResponse = InitResponse.fromJson(initDataMap);
@@ -221,10 +228,13 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
       state = AsyncValue.data(current.copyWith(
         initData: initResponse,
         clearError: true,
+        loadedLang: requestLang,
       ));
     } catch (e, st) {
       debugPrint('SessionNotifier.refreshSession error: $e');
-      state = AsyncValue.error(e, st);
+      if (!current!.isInitialized) {
+        state = AsyncValue.error(e, st);
+      }
     }
   }
 

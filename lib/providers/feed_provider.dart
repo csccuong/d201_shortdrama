@@ -18,6 +18,7 @@ class FeedState {
   final String cohort;
   final List<Map<String, String>> pendingEvents;
   final String? error;
+  final String? loadedLang;
 
   const FeedState({
     this.items = const [],
@@ -27,6 +28,7 @@ class FeedState {
     this.cohort = '',
     this.pendingEvents = const [],
     this.error,
+    this.loadedLang,
   });
 
   FeedState copyWith({
@@ -38,6 +40,7 @@ class FeedState {
     List<Map<String, String>>? pendingEvents,
     String? error,
     bool clearError = false,
+    String? loadedLang,
   }) {
     return FeedState(
       items: items ?? this.items,
@@ -47,6 +50,7 @@ class FeedState {
       cohort: cohort ?? this.cohort,
       pendingEvents: pendingEvents ?? this.pendingEvents,
       error: clearError ? null : (error ?? this.error),
+      loadedLang: loadedLang ?? this.loadedLang,
     );
   }
 }
@@ -58,6 +62,7 @@ class FeedState {
 class FeedNotifier extends Notifier<FeedState> {
   static const int _defaultCount = 20;
   static const int _eventFlushThreshold = 15;
+  int _fetchGeneration = 0;
 
   @override
   FeedState build() => const FeedState();
@@ -66,13 +71,24 @@ class FeedNotifier extends Notifier<FeedState> {
 
   /// Fetches the initial page with cursor='0', count=20.
   Future<void> fetchInitialFeed(String lang) async {
-    state = state.copyWith(isLoadingMore: true, clearError: true);
+    final gen = ++_fetchGeneration;
+    final langChanged = state.loadedLang != null && state.loadedLang != lang;
+    state = FeedState(
+      items: langChanged ? const [] : state.items,
+      nextCursor: langChanged ? null : state.nextCursor,
+      hasMore: langChanged ? true : state.hasMore,
+      isLoadingMore: true,
+      cohort: langChanged ? '' : state.cohort,
+      pendingEvents: state.pendingEvents,
+      loadedLang: lang,
+    );
     try {
       final response = await _service.fetchForYouFeed(
         cursor: '0',
         count: _defaultCount,
         lang: lang,
       );
+      if (gen != _fetchGeneration) return;
 
       state = FeedState(
         items: response.items,
@@ -80,8 +96,11 @@ class FeedNotifier extends Notifier<FeedState> {
         hasMore: response.hasMore,
         cohort: response.cohort,
         isLoadingMore: false,
+        pendingEvents: state.pendingEvents,
+        loadedLang: lang,
       );
     } catch (e) {
+      if (gen != _fetchGeneration) return;
       debugPrint('FeedNotifier.fetchInitialFeed error: $e');
       state = state.copyWith(
         isLoadingMore: false,
@@ -96,6 +115,7 @@ class FeedNotifier extends Notifier<FeedState> {
     final cursor = state.nextCursor;
     if (cursor == null) return;
 
+    final gen = _fetchGeneration;
     state = state.copyWith(isLoadingMore: true);
     try {
       final response = await _service.fetchForYouFeed(
@@ -103,6 +123,7 @@ class FeedNotifier extends Notifier<FeedState> {
         count: _defaultCount,
         lang: lang,
       );
+      if (gen != _fetchGeneration) return;
 
       state = state.copyWith(
         items: [...state.items, ...response.items],
@@ -112,6 +133,7 @@ class FeedNotifier extends Notifier<FeedState> {
         isLoadingMore: false,
       );
     } catch (e) {
+      if (gen != _fetchGeneration) return;
       debugPrint('FeedNotifier.loadMore error: $e');
       state = state.copyWith(isLoadingMore: false);
     }
@@ -119,7 +141,17 @@ class FeedNotifier extends Notifier<FeedState> {
 
   /// Refreshes the feed with cursor='0' and refresh=true (new seed).
   Future<void> refresh(String lang) async {
-    state = state.copyWith(isLoadingMore: true);
+    final gen = ++_fetchGeneration;
+    final langChanged = state.loadedLang != null && state.loadedLang != lang;
+    state = FeedState(
+      items: langChanged ? const [] : state.items,
+      nextCursor: langChanged ? null : state.nextCursor,
+      hasMore: langChanged ? true : state.hasMore,
+      isLoadingMore: true,
+      cohort: langChanged ? '' : state.cohort,
+      pendingEvents: state.pendingEvents,
+      loadedLang: lang,
+    );
     try {
       final response = await _service.fetchForYouFeed(
         cursor: '0',
@@ -127,6 +159,7 @@ class FeedNotifier extends Notifier<FeedState> {
         refresh: true,
         lang: lang,
       );
+      if (gen != _fetchGeneration) return;
 
       state = FeedState(
         items: response.items,
@@ -135,8 +168,10 @@ class FeedNotifier extends Notifier<FeedState> {
         cohort: response.cohort,
         isLoadingMore: false,
         pendingEvents: state.pendingEvents, // preserve pending events
+        loadedLang: lang,
       );
     } catch (e) {
+      if (gen != _fetchGeneration) return;
       debugPrint('FeedNotifier.refresh error: $e');
       state = state.copyWith(isLoadingMore: false);
     }

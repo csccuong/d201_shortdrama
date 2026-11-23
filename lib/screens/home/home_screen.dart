@@ -69,16 +69,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _didBootstrap) return;
       _didBootstrap = true;
-      final sessionReady =
-          ref.read(sessionProvider).asData?.value.isInitialized ?? false;
-      final hasHome =
-          ref.read(homeProvider).asData?.value.homeData != null;
-      if (sessionReady && !hasHome) {
-        unawaited(
-          ref
-              .read(homeProvider.notifier)
-              .fetchHome(ref.read(localeProvider).appLanguage),
-        );
+      final sessionState = ref.read(sessionProvider).asData?.value;
+      final sessionReady = sessionState?.isInitialized ?? false;
+      final lang = ref.read(localeProvider).appLanguage;
+      final homeAsync = ref.read(homeProvider);
+      final homeState = homeAsync.asData?.value;
+      final needsHomeFetch =
+          homeState?.homeData == null || homeState?.loadedLang != lang;
+      if (sessionReady && !homeAsync.isLoading && needsHomeFetch) {
+        unawaited(ref.read(homeProvider.notifier).fetchHome(lang));
+      }
+      if (sessionReady && sessionState?.loadedLang != lang) {
+        unawaited(ref.read(sessionProvider.notifier).refreshSession());
       }
       if (sessionReady) {
         _maybeShowHomePremiumPopup();
@@ -349,8 +351,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.listen<AsyncValue<SessionState>>(sessionProvider, (prev, next) {
       if (!(prev?.isReady ?? false) && next.isReady) {
         final lang = ref.read(localeProvider).appLanguage;
-        if (ref.read(homeProvider).asData?.value.homeData == null) {
+        final homeAsync = ref.read(homeProvider);
+        final homeState = homeAsync.asData?.value;
+        if (!homeAsync.isLoading &&
+            (homeState?.homeData == null || homeState?.loadedLang != lang)) {
           unawaited(ref.read(homeProvider.notifier).fetchHome(lang));
+        }
+        if (next.asData?.value.loadedLang != lang) {
+          unawaited(ref.read(sessionProvider.notifier).refreshSession());
         }
         if (_selectedCategory != 'all' && _categoryDramas.isEmpty) {
           unawaited(_loadCategoryDramas(reset: true));

@@ -26,6 +26,7 @@ class SplashController extends ChangeNotifier {
   int _value = 0;
   bool _isDisposed = false;
   bool isNoFirstOpenApp = false;
+  bool _hasSavedLanguage = false;
 
   /// Tracks whether the API session was successfully initialized.
   bool _apiInitialized = false;
@@ -51,6 +52,7 @@ class SplashController extends ChangeNotifier {
     await SharedPreferenceService.initFirstAppOpenTimeIfNeeded();
 
     final savedLang = await SharedPreferenceService.getSavedLanguageCodeOrNull();
+    _hasSavedLanguage = savedLang != null && savedLang.isNotEmpty;
     if (savedLang != null && !_isDisposed) {
       AppConstants.selectedLanguageCode = savedLang;
       ref.read(localeProvider.notifier).setAppLanguage(savedLang);
@@ -189,36 +191,44 @@ class SplashController extends ChangeNotifier {
 
   /// Doc 02 §2 Step 3: Fire parallel calls that don't block navigation.
   void _prefetchParallel(ProviderContainer container, String lang) {
-    unawaited(
-      Future(() async {
-        try {
-          await container.read(homeProvider.notifier).fetchHome(lang);
-        } catch (e) {
-          debugPrint('SplashController: Home pre-fetch failed (non-fatal): $e');
-        }
-      }),
-    );
+    final shouldPrefetchLocalizedContent =
+        _hasSavedLanguage ||
+        (isNoFirstOpenApp && AppConstants.skipLangOnboardOnReopen);
 
-    unawaited(
-      Future(() async {
-        try {
-          await container.read(feedProvider.notifier).fetchInitialFeed(lang);
-        } catch (e) {
-          debugPrint('SplashController: Feed pre-fetch failed (non-fatal): $e');
-        }
-      }),
-    );
+    if (shouldPrefetchLocalizedContent) {
+      unawaited(
+        Future(() async {
+          try {
+            await container.read(homeProvider.notifier).fetchHome(lang);
+          } catch (e) {
+            debugPrint(
+                'SplashController: Home pre-fetch failed (non-fatal): $e');
+          }
+        }),
+      );
 
-    unawaited(
-      Future(() async {
-        try {
-          await container.read(rewardsProvider.notifier).fetchOverview(lang);
-        } catch (e) {
-          debugPrint(
-              'SplashController: Rewards pre-fetch failed (non-fatal): $e');
-        }
-      }),
-    );
+      unawaited(
+        Future(() async {
+          try {
+            await container.read(feedProvider.notifier).fetchInitialFeed(lang);
+          } catch (e) {
+            debugPrint(
+                'SplashController: Feed pre-fetch failed (non-fatal): $e');
+          }
+        }),
+      );
+
+      unawaited(
+        Future(() async {
+          try {
+            await container.read(rewardsProvider.notifier).fetchOverview(lang);
+          } catch (e) {
+            debugPrint(
+                'SplashController: Rewards pre-fetch failed (non-fatal): $e');
+          }
+        }),
+      );
+    }
 
     unawaited(
       Future(() async {

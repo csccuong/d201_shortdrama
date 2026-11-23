@@ -240,6 +240,13 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
         unawaited(_refreshAll());
       }
     });
+
+    ref.listen<LocaleState>(localeProvider, (prev, next) {
+      if (prev?.appLanguage != next.appLanguage &&
+          ref.read(sessionProvider).isReady) {
+        unawaited(_refreshAll());
+      }
+    });
     final accountState = ref.watch(accountProvider);
     final homeVip =
         ref.watch(homeProvider).asData?.value.homeData?.vipExclusive ??

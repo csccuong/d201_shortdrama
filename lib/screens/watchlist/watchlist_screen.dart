@@ -48,9 +48,16 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
   void _refreshAllListsIfSessionReady() {
     if (!ref.read(sessionProvider).isReady) return;
     final lang = ref.read(localeProvider).appLanguage;
+    final mylist = ref.read(mylistProvider);
     final notifier = ref.read(mylistProvider.notifier);
-    unawaited(notifier.fetchFavorites(lang: lang));
-    unawaited(notifier.fetchHistory(lang: lang));
+    if (!mylist.isLoadingFavorites &&
+        (mylist.favorites.isEmpty || mylist.favoritesLang != lang)) {
+      unawaited(notifier.fetchFavorites(lang: lang));
+    }
+    if (!mylist.isLoadingHistory &&
+        (mylist.history.isEmpty || mylist.historyLang != lang)) {
+      unawaited(notifier.fetchHistory(lang: lang));
+    }
   }
 
   Future<void> _refreshWithSession(
@@ -142,6 +149,13 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
 
     ref.listen<AsyncValue<SessionState>>(sessionProvider, (prev, next) {
       if (!(prev?.isReady ?? false) && next.isReady) {
+        _refreshAllListsIfSessionReady();
+      }
+    });
+
+    ref.listen<LocaleState>(localeProvider, (prev, next) {
+      if (prev?.appLanguage != next.appLanguage &&
+          ref.read(sessionProvider).isReady) {
         _refreshAllListsIfSessionReady();
       }
     });
