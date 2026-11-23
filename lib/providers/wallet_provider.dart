@@ -1,0 +1,158 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/di/injection.dart';
+import '../models/init_response.dart';
+import '../models/play_response.dart';
+import '../models/rewards_models.dart';
+import '../models/user_profile.dart';
+import '../services/api/account_api_service.dart';
+
+// ============================================================================
+// WALLET STATE — Syncs coin balance and VIP status with server
+// ============================================================================
+
+class WalletState {
+  final int coinBalance;
+  final int bonusCoinBalance;
+  final int totalCoins;
+  final bool isVip;
+  final String? vipExpiresAt;
+  final int adUnlocksRemainingToday;
+
+  const WalletState({
+    this.coinBalance = 0,
+    this.bonusCoinBalance = 0,
+    this.totalCoins = 0,
+    this.isVip = false,
+    this.vipExpiresAt,
+    this.adUnlocksRemainingToday = 0,
+  });
+
+  WalletState copyWith({
+    int? coinBalance,
+    int? bonusCoinBalance,
+    int? totalCoins,
+    bool? isVip,
+    String? vipExpiresAt,
+    int? adUnlocksRemainingToday,
+    bool clearVipExpiry = false,
+  }) {
+    return WalletState(
+      coinBalance: coinBalance ?? this.coinBalance,
+      bonusCoinBalance: bonusCoinBalance ?? this.bonusCoinBalance,
+      totalCoins: totalCoins ?? this.totalCoins,
+      isVip: isVip ?? this.isVip,
+      vipExpiresAt:
+          clearVipExpiry ? null : (vipExpiresAt ?? this.vipExpiresAt),
+      adUnlocksRemainingToday:
+          adUnlocksRemainingToday ?? this.adUnlocksRemainingToday,
+    );
+  }
+}
+
+// ============================================================================
+// WALLET NOTIFIER
+// ============================================================================
+
+class WalletNotifier extends Notifier<WalletState> {
+  @override
+  WalletState build() => const WalletState();
+
+  /// Syncs wallet from the POST /v1/app/init response data.
+  void updateFromInitResponse(InitResponse initData) {
+    final user = initData.user;
+    state = state.copyWith(
+      coinBalance: user.coinBalance,
+      bonusCoinBalance: user.bonusCoinBalance,
+      totalCoins: user.totalCoins,
+      isVip: user.isVip,
+      vipExpiresAt: user.vipExpiresAt,
+      adUnlocksRemainingToday: user.adUnlocksRemainingToday,
+    );
+  }
+
+  /// Syncs wallet after a successful episode unlock.
+  void updateFromUnlock(UnlockResponse unlockData) {
+    state = state.copyWith(
+      coinBalance: unlockData.coinBalance,
+      bonusCoinBalance: unlockData.bonusCoinBalance,
+      totalCoins: unlockData.totalCoins,
+      adUnlocksRemainingToday: unlockData.adUnlocksRemainingToday,
+    );
+  }
+
+  /// Syncs wallet from the user profile response.
+  void updateFromProfile(UserProfile profile) {
+    state = state.copyWith(
+      coinBalance: profile.coinBalance,
+      bonusCoinBalance: profile.bonusCoinBalance,
+      totalCoins: profile.totalCoins,
+      isVip: profile.isVip,
+      vipExpiresAt: profile.vipExpiresAt,
+      adUnlocksRemainingToday: profile.adUnlocksRemainingToday,
+    );
+  }
+
+  /// Syncs wallet immediately from POST /v1/iap/verify response fields if present.
+  void applyIapVerifyResponse(
+    Map<String, dynamic> data, {
+    bool? fallbackIsVip,
+  }) {
+    final coinBalance = (data['coin_balance'] as num?)?.toInt();
+    final bonusBalance = (data['bonus_coin_balance'] as num?)?.toInt();
+    final totalCoins = (data['total_coins'] as num?)?.toInt() ??
+        ((coinBalance != null || bonusBalance != null)
+            ? (coinBalance ?? state.coinBalance) +
+                (bonusBalance ?? state.bonusCoinBalance)
+            : null);
+    state = state.copyWith(
+      coinBalance: coinBalance,
+      bonusCoinBalance: bonusBalance,
+      totalCoins: totalCoins,
+      isVip: (data['is_vip'] as bool?) ?? fallbackIsVip,
+      vipExpiresAt: data['vip_expires_at']?.toString(),
+    );
+  }
+
+  /// Immediately updates VIP state when a promo code or reviewer feedback unlocks VIP.
+  void applyPromoVipActivation({String? vipExpiresAt}) {
+    state = state.copyWith(
+      isVip: true,
+      vipExpiresAt: vipExpiresAt ?? state.vipExpiresAt,
+    );
+  }
+
+  /// Revokes local VIP state (e.g. when `/play` returns HTTP 402 after a Store refund).
+  void revokeVip() {
+    state = state.copyWith(isVip: false, clearVipExpiry: true);
+  }
+
+  /// Syncs wallet from RewardsOverview.wallet snapshot.
+  void updateFromWalletInfo(WalletInfo wallet) {
+    state = state.copyWith(
+      coinBalance: wallet.coinBalance,
+      bonusCoinBalance: wallet.bonusCoinBalance,
+      totalCoins: wallet.totalCoins,
+    );
+  }
+
+  /// Re-fetches profile from the server and updates wallet state.
+  Future<void> refreshFromServer() async {
+    try {
+      final accountService = inject<AccountApiService>();
+      final profile = await accountService.fetchProfile();
+      updateFromProfile(profile);
+    } catch (e) {
+      debugPrint('WalletNotifier.refreshFromServer error: $e');
+    }
+  }
+}
+
+// ============================================================================
+// PROVIDER
+// ============================================================================
+
+final walletProvider = NotifierProvider<WalletNotifier, WalletState>(
+  WalletNotifier.new,
+);
